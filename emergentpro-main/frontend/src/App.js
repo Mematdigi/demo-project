@@ -15,6 +15,7 @@ import Budget from "./pages/Budget";
 import Risks from "./pages/Risks";
 import Vendors from "./pages/Vendors";
 import Reports from "./pages/Reports";
+import Approvals from "./pages/Approvals";
 
 // Layout
 import AppShell from "./components/layout/AppShell";
@@ -145,6 +146,7 @@ function App() {
                     <Route path="/tasks" element={<Tasks />} />
                     <Route path="/resources" element={<Resources />} />
                     <Route path="/budget" element={<Budget />} />
+                    <Route path="/approvals" element={<Approvals />} /> 
                     <Route path="/risks" element={<Risks />} />
                     <Route path="/vendors" element={<Vendors />} />
                     <Route path="/reports" element={<Reports />} />

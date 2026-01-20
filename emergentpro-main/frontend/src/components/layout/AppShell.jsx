@@ -15,10 +15,12 @@ import {
   LogOut,
   Shield,
   ChevronRight,
-  Settings
+  FileCheck // Import icon for Approvals
 } from "lucide-react";
 import { Button } from "../ui/button";
+import { useAuth } from "../../App";
 
+// Added "Approvals" to navigation
 const navItems = [
   { path: "/", label: "Dashboard", icon: LayoutDashboard },
   { path: "/programs", label: "Programmes", icon: Boxes },
@@ -26,6 +28,7 @@ const navItems = [
   { path: "/tasks", label: "Tasks", icon: ListTodo },
   { path: "/resources", label: "Resources", icon: Users },
   { path: "/budget", label: "Budget", icon: IndianRupee },
+  { path: "/approvals", label: "Approvals", icon: FileCheck }, // Added Approvals Link
   { path: "/risks", label: "Risks", icon: AlertTriangle },
   { path: "/vendors", label: "Vendors", icon: Building2 },
   { path: "/reports", label: "Reports", icon: BarChart3 },
@@ -35,10 +38,18 @@ export default function AppShell({ children }) {
   const location = useLocation();
   const navigate = useNavigate();
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
+  
+  // FIX 1: Destructure object, not array
+  const { user, logout } = useAuth(); 
 
   const handleLogout = () => {
-    localStorage.removeItem("token");
+    logout(); // Use the context logout function
     navigate("/login");
+  };
+
+  // Helper to get initials
+  const getInitials = (name) => {
+    return name ? name.split(' ').map(n => n[0]).join('').substring(0, 2).toUpperCase() : 'U';
   };
 
   return (
@@ -59,12 +70,7 @@ export default function AppShell({ children }) {
             </span>
           </div>
         </div>
-        <Button
-          variant="ghost"
-          size="sm"
-          onClick={handleLogout}
-          className="text-slate-500"
-        >
+        <Button variant="ghost" size="sm" onClick={handleLogout} className="text-slate-500">
           <LogOut className="w-4 h-4" />
         </Button>
       </div>
@@ -75,7 +81,6 @@ export default function AppShell({ children }) {
           isSidebarOpen ? "translate-x-0" : "-translate-x-full"
         }`}
       >
-        {/* Logo */}
         <div className="h-16 flex items-center gap-3 px-5 border-b border-slate-100">
           <div className="w-10 h-10 bg-blue-600 rounded-lg flex items-center justify-center">
             <Shield className="w-5 h-5 text-white" />
@@ -88,7 +93,6 @@ export default function AppShell({ children }) {
           </div>
         </div>
 
-        {/* Navigation */}
         <nav className="p-3 space-y-1">
           {navItems.map((item) => {
             const isActive = location.pathname === item.path;
@@ -102,7 +106,6 @@ export default function AppShell({ children }) {
                     ? "bg-blue-50 text-blue-700"
                     : "text-slate-600 hover:bg-slate-50 hover:text-slate-800"
                 }`}
-                data-testid={`nav-${item.label.toLowerCase()}`}
               >
                 <item.icon className={`w-5 h-5 ${isActive ? "text-blue-600" : "text-slate-400 group-hover:text-slate-600"}`} />
                 <span className="font-medium text-sm">{item.label}</span>
@@ -112,22 +115,25 @@ export default function AppShell({ children }) {
           })}
         </nav>
 
-        {/* User Section */}
+        {/* FIX 2: Dynamic User Section */}
         <div className="absolute bottom-0 left-0 right-0 p-4 border-t border-slate-100">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-3">
-              <div className="w-9 h-9 bg-slate-100 rounded-full flex items-center justify-center">
-                <span className="text-sm font-medium text-slate-600">TU</span>
+              <div className="w-9 h-9 bg-slate-100 rounded-full flex items-center justify-center text-blue-600 font-bold text-xs">
+                {getInitials(user?.name)}
               </div>
-              <div>
-                <p className="text-sm font-medium text-slate-700">Test User</p>
-                <p className="text-xs text-slate-500">Admin</p>
+              <div className="overflow-hidden">
+                <p className="text-sm font-medium text-slate-700 truncate w-32" title={user?.name}>
+                  {user?.name || "User"}
+                </p>
+                <p className="text-xs text-slate-500 capitalize">
+                  {user?.role || "Guest"}
+                </p>
               </div>
             </div>
             <button
               onClick={handleLogout}
               className="p-2 text-slate-400 hover:text-slate-600 hover:bg-slate-100 rounded-lg transition-colors"
-              title="Logout"
             >
               <LogOut className="w-4 h-4" />
             </button>
@@ -135,15 +141,10 @@ export default function AppShell({ children }) {
         </div>
       </aside>
 
-      {/* Mobile Overlay */}
       {isSidebarOpen && (
-        <div
-          className="fixed inset-0 bg-black/20 z-30 lg:hidden"
-          onClick={() => setIsSidebarOpen(false)}
-        />
+        <div className="fixed inset-0 bg-black/20 z-30 lg:hidden" onClick={() => setIsSidebarOpen(false)} />
       )}
 
-      {/* Main Content */}
       <main className="lg:ml-64 min-h-screen pt-14 lg:pt-0">
         <div className="p-6 lg:p-8">
           {children}

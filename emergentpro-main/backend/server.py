@@ -815,6 +815,75 @@ async def accept_task(task_id: str, acceptance: Dict[str, Any], current_user: Di
     result = await db.tasks.update_one({"id": task_id}, {"$set": update_data})
     return await db.tasks.find_one({"id": task_id}, {"_id": 0})
 
+# # ================= RESOURCES ROUTES =================
+# @api_router.get("/resources")
+# async def get_resources(type: Optional[str] = None, clearance: Optional[str] = None):
+#     query = {}
+#     if type:
+#         query["type"] = type
+#     if clearance:
+#         query["clearance_level"] = clearance
+#     resources = await db.resources.find(query, {"_id": 0}).to_list(1000)
+#     return resources
+
+# @api_router.get("/resources/{resource_id}")
+# async def get_resource(resource_id: str):
+#     resource = await db.resources.find_one({"id": resource_id}, {"_id": 0})
+#     if not resource:
+#         raise HTTPException(status_code=404, detail="Resource not found")
+#     return resource
+
+# @api_router.post("/resources")
+# async def create_resource(resource_data: ResourceCreate, current_user: Dict = Depends(get_current_user)):
+#     resource = ResourceBase(**resource_data.model_dump())
+#     resource_dict = resource.model_dump()
+#     resource_dict['created_at'] = resource_dict['created_at'].isoformat()
+#     await db.resources.insert_one(resource_dict)
+#     resource_dict.pop('_id', None)
+#     return resource_dict
+
+# @api_router.put("/resources/{resource_id}")
+# async def update_resource(resource_id: str, update_data: Dict[str, Any], current_user: Dict = Depends(get_current_user)):
+#     # Calculate utilization and burnout risk
+#     if 'allocated_hours' in update_data:
+#         resource = await db.resources.find_one({"id": resource_id}, {"_id": 0})
+#         if resource:
+#             capacity = resource.get('capacity_hours', 160)
+#             allocated = update_data.get('allocated_hours', 0)
+#             utilization = min(100, int((allocated / capacity) * 100)) if capacity > 0 else 0
+#             update_data['utilization'] = utilization
+            
+#             if utilization > 100:
+#                 update_data['burnout_risk'] = "critical"
+#             elif utilization > 85:
+#                 update_data['burnout_risk'] = "high"
+#             elif utilization > 70:
+#                 update_data['burnout_risk'] = "medium"
+#             else:
+#                 update_data['burnout_risk'] = "low"
+    
+#     result = await db.resources.update_one({"id": resource_id}, {"$set": update_data})
+#     if result.modified_count == 0:
+#         raise HTTPException(status_code=404, detail="Resource not found")
+#     return await db.resources.find_one({"id": resource_id}, {"_id": 0})
+
+# @api_router.get("/resources/conflicts/check")
+# async def check_resource_conflicts():
+#     resources = await db.resources.find({}, {"_id": 0}).to_list(1000)
+#     conflicts = []
+    
+#     for resource in resources:
+#         if resource.get('utilization', 0) > 100:
+#             conflicts.append({
+#                 "resource_id": resource['id'],
+#                 "resource_name": resource['name'],
+#                 "type": "over_allocation",
+#                 "utilization": resource.get('utilization', 0),
+#                 "allocated_projects": resource.get('allocated_projects', [])
+#             })
+    
+#     return conflicts
+
 # ================= RESOURCES ROUTES =================
 @api_router.get("/resources")
 async def get_resources(type: Optional[str] = None, clearance: Optional[str] = None):
@@ -883,6 +952,327 @@ async def check_resource_conflicts():
             })
     
     return conflicts
+
+# Delete resource
+@api_router.delete("/resources/{resource_id}")
+async def delete_resource(resource_id: str, current_user: Dict = Depends(get_current_user)):
+    resource = await db.resources.find_one({"id": resource_id}, {"_id": 0})
+    if not resource:
+        raise HTTPException(status_code=404, detail="Resource not found")
+    
+    result = await db.resources.delete_one({"id": resource_id})
+    if result.deleted_count == 0:
+        raise HTTPException(status_code=404, detail="Resource not found")
+    
+    return {"message": "Resource deleted successfully", "id": resource_id}
+
+# Allocate resource to project
+@api_router.post("/resources/{resource_id}/allocate")
+async def allocate_resource(resource_id: str, allocation: Dict[str, Any], current_user: Dict = Depends(get_current_user)):
+    resource = await db.resources.find_one({"id": resource_id}, {"_id": 0})
+    if not resource:
+        raise HTTPException(status_code=404, detail="Resource not found")
+    
+    project_id = allocation.get("project_id")
+    hours = allocation.get("hours", 0)
+    
+    # Check project exists
+    project = await db.projects.find_one({"id": project_id}, {"_id": 0})
+    if not project:
+        raise HTTPException(status_code=404, detail="Project not found")
+    
+    # Check clearance level compatibility
+    clearance_order = ["public", "confidential", "secret", "top_secret"]
+    resource_clearance = resource.get("clearance_level", "public")
+    project_clearance = project.get("clearance_level", "public")
+    
+    if clearance_order.index(resource_clearance) < clearance_order.index(project_clearance):
+        raise HTTPException(
+            status_code=403, 
+            detail=f"Resource clearance level ({resource_clearance}) insufficient for project ({project_clearance})"
+        )
+    
+    # Update allocation
+    allocated_projects = resource.get("allocated_projects", [])
+    if project_id not in allocated_projects:
+        allocated_projects.append(project_id)
+    
+    new_allocated_hours = resource.get("allocated_hours", 0) + hours
+    capacity = resource.get("capacity_hours", 160)
+    utilization = min(150, int((new_allocated_hours / capacity) * 100)) if capacity > 0 else 0
+    
+    # Calculate burnout risk
+    if utilization > 100:
+        burnout_risk = "critical"
+    elif utilization > 85:
+        burnout_risk = "high"
+    elif utilization > 70:
+        burnout_risk = "medium"
+    else:
+        burnout_risk = "low"
+    
+    update_data = {
+        "allocated_projects": allocated_projects,
+        "allocated_hours": new_allocated_hours,
+        "utilization": utilization,
+        "burnout_risk": burnout_risk,
+        "updated_at": datetime.now(timezone.utc).isoformat()
+    }
+    
+    await db.resources.update_one({"id": resource_id}, {"$set": update_data})
+    return await db.resources.find_one({"id": resource_id}, {"_id": 0})
+
+# Deallocate resource from project
+@api_router.post("/resources/{resource_id}/deallocate")
+async def deallocate_resource(resource_id: str, deallocation: Dict[str, Any], current_user: Dict = Depends(get_current_user)):
+    resource = await db.resources.find_one({"id": resource_id}, {"_id": 0})
+    if not resource:
+        raise HTTPException(status_code=404, detail="Resource not found")
+    
+    project_id = deallocation.get("project_id")
+    hours = deallocation.get("hours", 0)
+    
+    allocated_projects = resource.get("allocated_projects", [])
+    if project_id in allocated_projects:
+        allocated_projects.remove(project_id)
+    
+    new_allocated_hours = max(0, resource.get("allocated_hours", 0) - hours)
+    capacity = resource.get("capacity_hours", 160)
+    utilization = min(150, int((new_allocated_hours / capacity) * 100)) if capacity > 0 else 0
+    
+    # Calculate burnout risk
+    if utilization > 100:
+        burnout_risk = "critical"
+    elif utilization > 85:
+        burnout_risk = "high"
+    elif utilization > 70:
+        burnout_risk = "medium"
+    else:
+        burnout_risk = "low"
+    
+    update_data = {
+        "allocated_projects": allocated_projects,
+        "allocated_hours": new_allocated_hours,
+        "utilization": utilization,
+        "burnout_risk": burnout_risk,
+        "updated_at": datetime.now(timezone.utc).isoformat()
+    }
+    
+    await db.resources.update_one({"id": resource_id}, {"$set": update_data})
+    return await db.resources.find_one({"id": resource_id}, {"_id": 0})
+
+# Search resources by skills
+@api_router.get("/resources/search/skills")
+async def search_resources_by_skills(skills: str = Query(..., description="Comma-separated skills to search")):
+    skill_list = [s.strip().lower() for s in skills.split(",")]
+    
+    resources = await db.resources.find({}, {"_id": 0}).to_list(1000)
+    
+    matched = []
+    for resource in resources:
+        resource_skills = [s.lower() for s in resource.get("skills", [])]
+        matching_skills = [s for s in skill_list if s in resource_skills]
+        if matching_skills:
+            matched.append({
+                **resource,
+                "matching_skills": matching_skills,
+                "match_score": len(matching_skills) / len(skill_list) * 100
+            })
+    
+    # Sort by match score
+    matched.sort(key=lambda x: x["match_score"], reverse=True)
+    return matched
+
+# Search resources by certification
+@api_router.get("/resources/search/certifications")
+async def search_resources_by_certifications(certifications: str = Query(..., description="Comma-separated certifications")):
+    cert_list = [c.strip().lower() for c in certifications.split(",")]
+    
+    resources = await db.resources.find({}, {"_id": 0}).to_list(1000)
+    
+    matched = []
+    for resource in resources:
+        resource_certs = [c.lower() for c in resource.get("certifications", [])]
+        matching_certs = [c for c in cert_list if c in resource_certs]
+        if matching_certs:
+            matched.append({
+                **resource,
+                "matching_certifications": matching_certs,
+                "match_score": len(matching_certs) / len(cert_list) * 100
+            })
+    
+    matched.sort(key=lambda x: x["match_score"], reverse=True)
+    return matched
+
+# Get resources by clearance level
+@api_router.get("/resources/clearance/{level}")
+async def get_resources_by_clearance(level: str):
+    clearance_order = ["public", "confidential", "secret", "top_secret"]
+    if level not in clearance_order:
+        raise HTTPException(status_code=400, detail="Invalid clearance level")
+    
+    # Get resources with clearance >= specified level
+    min_index = clearance_order.index(level)
+    valid_clearances = clearance_order[min_index:]
+    
+    resources = await db.resources.find(
+        {"clearance_level": {"$in": valid_clearances}}, 
+        {"_id": 0}
+    ).to_list(1000)
+    return resources
+
+# Get capacity planning overview
+@api_router.get("/resources/capacity/overview")
+async def get_capacity_overview():
+    resources = await db.resources.find({}, {"_id": 0}).to_list(1000)
+    
+    total_capacity = sum(r.get("capacity_hours", 0) for r in resources)
+    total_allocated = sum(r.get("allocated_hours", 0) for r in resources)
+    avg_utilization = sum(r.get("utilization", 0) for r in resources) / len(resources) if resources else 0
+    
+    # Group by type
+    by_type = {}
+    for r in resources:
+        rtype = r.get("type", "unknown")
+        if rtype not in by_type:
+            by_type[rtype] = {"count": 0, "capacity": 0, "allocated": 0, "avg_utilization": 0}
+        by_type[rtype]["count"] += 1
+        by_type[rtype]["capacity"] += r.get("capacity_hours", 0)
+        by_type[rtype]["allocated"] += r.get("allocated_hours", 0)
+        by_type[rtype]["avg_utilization"] += r.get("utilization", 0)
+    
+    for rtype in by_type:
+        if by_type[rtype]["count"] > 0:
+            by_type[rtype]["avg_utilization"] = round(by_type[rtype]["avg_utilization"] / by_type[rtype]["count"], 1)
+    
+    # Burnout risk distribution
+    burnout_distribution = {"low": 0, "medium": 0, "high": 0, "critical": 0}
+    for r in resources:
+        risk = r.get("burnout_risk", "low")
+        burnout_distribution[risk] = burnout_distribution.get(risk, 0) + 1
+    
+    # Available resources (< 70% utilization)
+    available = [r for r in resources if r.get("utilization", 0) < 70]
+    
+    # Over-allocated resources (> 100%)
+    over_allocated = [r for r in resources if r.get("utilization", 0) > 100]
+    
+    return {
+        "total_resources": len(resources),
+        "total_capacity_hours": total_capacity,
+        "total_allocated_hours": total_allocated,
+        "overall_utilization": round(avg_utilization, 1),
+        "available_capacity_hours": total_capacity - total_allocated,
+        "by_type": by_type,
+        "burnout_distribution": burnout_distribution,
+        "available_count": len(available),
+        "over_allocated_count": len(over_allocated),
+        "available_resources": [{"id": r["id"], "name": r["name"], "utilization": r.get("utilization", 0)} for r in available[:10]],
+        "over_allocated_resources": [{"id": r["id"], "name": r["name"], "utilization": r.get("utilization", 0)} for r in over_allocated]
+    }
+
+# Get skills summary
+@api_router.get("/resources/skills/summary")
+async def get_skills_summary():
+    resources = await db.resources.find({}, {"_id": 0}).to_list(1000)
+    
+    # Aggregate all skills
+    skills_count = {}
+    for r in resources:
+        for skill in r.get("skills", []):
+            skills_count[skill] = skills_count.get(skill, 0) + 1
+    
+    # Sort by count
+    sorted_skills = sorted(skills_count.items(), key=lambda x: x[1], reverse=True)
+    
+    return {
+        "total_unique_skills": len(skills_count),
+        "skills": [{"skill": s, "count": c} for s, c in sorted_skills]
+    }
+
+# Get certifications summary
+@api_router.get("/resources/certifications/summary")
+async def get_certifications_summary():
+    resources = await db.resources.find({}, {"_id": 0}).to_list(1000)
+    
+    certs_count = {}
+    for r in resources:
+        for cert in r.get("certifications", []):
+            certs_count[cert] = certs_count.get(cert, 0) + 1
+    
+    sorted_certs = sorted(certs_count.items(), key=lambda x: x[1], reverse=True)
+    
+    return {
+        "total_unique_certifications": len(certs_count),
+        "certifications": [{"certification": c, "count": cnt} for c, cnt in sorted_certs]
+    }
+
+# Get resource workload for a specific project
+@api_router.get("/resources/project/{project_id}/allocation")
+async def get_project_resource_allocation(project_id: str):
+    resources = await db.resources.find(
+        {"allocated_projects": project_id}, 
+        {"_id": 0}
+    ).to_list(1000)
+    
+    project = await db.projects.find_one({"id": project_id}, {"_id": 0})
+    
+    return {
+        "project_id": project_id,
+        "project_name": project.get("name") if project else "Unknown",
+        "allocated_resources": len(resources),
+        "resources": resources,
+        "total_hours": sum(r.get("allocated_hours", 0) for r in resources),
+        "clearance_breakdown": {
+            level: len([r for r in resources if r.get("clearance_level") == level])
+            for level in ["public", "confidential", "secret", "top_secret"]
+        }
+    }
+
+# Bulk update resource allocations
+@api_router.post("/resources/bulk/allocate")
+async def bulk_allocate_resources(allocations: List[Dict[str, Any]], current_user: Dict = Depends(get_current_user)):
+    results = []
+    for alloc in allocations:
+        resource_id = alloc.get("resource_id")
+        project_id = alloc.get("project_id")
+        hours = alloc.get("hours", 0)
+        
+        try:
+            resource = await db.resources.find_one({"id": resource_id}, {"_id": 0})
+            if not resource:
+                results.append({"resource_id": resource_id, "status": "error", "message": "Resource not found"})
+                continue
+            
+            allocated_projects = resource.get("allocated_projects", [])
+            if project_id not in allocated_projects:
+                allocated_projects.append(project_id)
+            
+            new_allocated_hours = resource.get("allocated_hours", 0) + hours
+            capacity = resource.get("capacity_hours", 160)
+            utilization = min(150, int((new_allocated_hours / capacity) * 100)) if capacity > 0 else 0
+            
+            burnout_risk = "low"
+            if utilization > 100:
+                burnout_risk = "critical"
+            elif utilization > 85:
+                burnout_risk = "high"
+            elif utilization > 70:
+                burnout_risk = "medium"
+            
+            await db.resources.update_one({"id": resource_id}, {"$set": {
+                "allocated_projects": allocated_projects,
+                "allocated_hours": new_allocated_hours,
+                "utilization": utilization,
+                "burnout_risk": burnout_risk,
+                "updated_at": datetime.now(timezone.utc).isoformat()
+            }})
+            
+            results.append({"resource_id": resource_id, "status": "success", "utilization": utilization})
+        except Exception as e:
+            results.append({"resource_id": resource_id, "status": "error", "message": str(e)})
+    
+    return {"results": results}
 
 # ================= BUDGET ROUTES =================
 @api_router.get("/budget")

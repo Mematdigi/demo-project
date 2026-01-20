@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from "react";
 import axios from "axios";
-import { API } from "../App";
+import { API, useAuth } from "../App";
 import {
   IndianRupee,
   Plus,
@@ -58,6 +58,8 @@ export default function Budget() {
     quarter: "Q1",
     release_stage: "initial"
   });
+
+  const { user } = useAuth();
 
   useEffect(() => {
     fetchData();
@@ -533,7 +535,7 @@ export default function Budget() {
                     </span>
                   </td>
                   <td>
-                    {entry.status !== 'released' && (
+                    {entry.status !== 'released' && user?.role === 'admin' && (
                       <Button 
                         size="sm" 
                         variant="outline" 

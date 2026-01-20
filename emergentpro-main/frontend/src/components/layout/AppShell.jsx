@@ -66,7 +66,7 @@ export default function AppShell({ children }) {
           <div className="flex items-center gap-2">
             <Shield className="w-6 h-6 text-blue-600" />
             <span className="font-heading text-sm font-bold text-slate-800 uppercase tracking-wider">
-              DPMS
+              Memat Digi
             </span>
           </div>
         </div>
@@ -82,14 +82,15 @@ export default function AppShell({ children }) {
         }`}
       >
         <div className="h-16 flex items-center gap-3 px-5 border-b border-slate-100">
-          <div className="w-10 h-10 bg-blue-600 rounded-lg flex items-center justify-center">
-            <Shield className="w-5 h-5 text-white" />
+          <div className="w-10 h-10 rounded-lg flex items-center justify-center">
+            {/* <Shield className="w-5 h-5 text-white" /> */}
+            <img src="/logo.png"  alt="logo" className="w-10 h-10 object-contain"/>
           </div>
           <div>
             <p className="font-heading text-sm font-bold text-slate-800 uppercase tracking-wider">
-              DPMS
+              Memat Digi
             </p>
-            <p className="text-[10px] text-slate-500">Command Centre</p>
+            <p className="text-[10px] text-slate-500">Project Management</p>
           </div>
         </div>
 

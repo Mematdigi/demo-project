@@ -277,6 +277,7 @@ class TaskCreate(BaseModel):
     assigned_unit: Optional[str] = None
     assigned_vendor: Optional[str] = None
     acceptance_criteria: Optional[str] = None
+    classification: Optional[str] = "public"
 
 # Resource Model with enhanced capacity planning
 class ResourceBase(BaseModel):
@@ -641,10 +642,17 @@ async def delete_program(program_id: str, current_user: Dict = Depends(get_curre
 
 # ================= PROJECTS ROUTES =================
 @api_router.get("/projects")
-async def get_projects(program_id: Optional[str] = None, include_subprojects: bool = True):
+async def get_projects(
+    program_id: Optional[str] = None,
+    parent_project_id: Optional[str] = None,
+    include_subprojects:bool = True
+):
     query = {}
     if program_id:
         query["program_id"] = program_id
+    if parent_project_id:
+        query["parent_project_id"] = parent_project_id
+
     projects = await db.projects.find(query, {"_id": 0}).to_list(1000)
     return projects
 

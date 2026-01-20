@@ -1,58 +1,46 @@
 import React, { useState, useEffect } from "react";
 import axios from "axios";
-import { API } from "../App";
+import { API, useAuth } from "../App";
 import {
-  AlertTriangle,
-  Plus,
-  Search,
-  Shield,
-  MoreVertical,
-  TrendingUp,
-  ArrowUp
+  AlertTriangle, Plus, Search, Shield, MoreVertical, TrendingUp,
+  ArrowUp, LayoutGrid, List, Network, AlertOctagon, CheckCircle2,
+  Siren, CornerDownRight, Activity
 } from "lucide-react";
 import { Button } from "../components/ui/button";
 import { Input } from "../components/ui/input";
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-  DialogTrigger,
-} from "../components/ui/dialog";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "../components/ui/select";
+import { Badge } from "../components/ui/badge";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "../components/ui/tabs";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "../components/ui/dialog";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../components/ui/select";
 import { toast } from "sonner";
 
 const riskCategories = ["Technical", "Financial", "Supply Chain", "Administrative", "Environmental", "Security", "Operational"];
 
 export default function Risks() {
+  const { user } = useAuth();
   const [risks, setRisks] = useState([]);
   const [issues, setIssues] = useState([]);
   const [projects, setProjects] = useState([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState("");
-  const [levelFilter, setLevelFilter] = useState("all");
-  const [viewMode, setViewMode] = useState("list");
-  const [isDialogOpen, setIsDialogOpen] = useState(false);
-  const [formData, setFormData] = useState({
-    project_id: "",
-    title: "",
-    description: "",
-    category: "Technical",
-    probability: 3,
-    impact: 3,
-    mitigation_plan: "",
-    contingency_plan: ""
+  const [viewMode, setViewMode] = useState("matrix"); // matrix, list
+  
+  // Forms
+  const [isRiskOpen, setIsRiskOpen] = useState(false);
+  const [isIssueOpen, setIsIssueOpen] = useState(false);
+  
+  const [riskForm, setRiskForm] = useState({
+    project_id: "", title: "", description: "", category: "Technical",
+    probability: 3, impact: 3, mitigation_plan: "", contingency_plan: "",
+    related_dependencies: []
   });
 
-  useEffect(() => {
-    fetchData();
-  }, []);
+  const [issueForm, setIssueForm] = useState({
+    project_id: "", title: "", description: "", category: "Technical",
+    severity: "medium", assigned_to: ""
+  });
+
+  useEffect(() => { fetchData(); }, []);
 
   const fetchData = async () => {
     try {
@@ -64,492 +52,363 @@ export default function Risks() {
       setRisks(risksRes.data);
       setIssues(issuesRes.data);
       setProjects(projectsRes.data);
-    } catch (error) {
-      console.error("Failed to fetch risks:", error);
-      toast.error("Failed to load risk data");
-    } finally {
-      setLoading(false);
-    }
+    } catch (error) { toast.error("Failed to load intelligence data"); } 
+    finally { setLoading(false); }
   };
 
-  const handleSubmit = async (e) => {
+  // --- ACTIONS ---
+
+  const handleCreateRisk = async (e) => {
     e.preventDefault();
     try {
-      await axios.post(`${API}/risks`, formData);
-      toast.success("Risk created successfully");
-      setIsDialogOpen(false);
+      await axios.post(`${API}/risks`, riskForm);
+      toast.success("Risk Logged");
+      setIsRiskOpen(false);
       fetchData();
-      setFormData({
-        project_id: "",
-        title: "",
-        description: "",
-        category: "Technical",
-        probability: 3,
-        impact: 3,
-        mitigation_plan: "",
-        contingency_plan: ""
+      setRiskForm({
+        project_id: "", title: "", description: "", category: "Technical",
+        probability: 3, impact: 3, mitigation_plan: "", contingency_plan: "", related_dependencies: []
       });
-    } catch (error) {
-      toast.error("Failed to create risk");
-    }
+    } catch (error) { toast.error("Failed to log risk"); }
   };
 
-  const handleEscalate = async (riskId) => {
+  const handleCreateIssue = async (e) => {
+    e.preventDefault();
     try {
-      await axios.post(`${API}/risks/${riskId}/escalate`, { 
-        level: 1, 
-        reason: "Manual escalation" 
-      });
-      toast.success("Risk escalated");
+      await axios.post(`${API}/issues`, issueForm);
+      toast.success("Issue Reported");
+      setIsIssueOpen(false);
       fetchData();
-    } catch (error) {
-      toast.error("Failed to escalate risk");
-    }
+    } catch (error) { toast.error("Failed to report issue"); }
   };
 
-  const getProjectName = (projectId) => {
-    const project = projects.find(p => p.id === projectId);
-    return project?.name || "Unknown";
+  const handleEscalateRisk = async (risk) => {
+    try {
+      await axios.post(`${API}/risks/${risk.id}/escalate`, { level: risk.escalation_level + 1, reason: "Manual Command Escalation" });
+      toast.success("Risk Escalated to Command");
+      fetchData();
+    } catch (e) { toast.error("Escalation failed"); }
   };
 
-  const getRiskColor = (level) => {
-    switch (level) {
-      case 'critical': return { bg: 'bg-red-100', text: 'text-red-700', border: 'border-red-200' };
-      case 'high': return { bg: 'bg-orange-100', text: 'text-orange-700', border: 'border-orange-200' };
-      case 'medium': return { bg: 'bg-amber-100', text: 'text-amber-700', border: 'border-amber-200' };
-      default: return { bg: 'bg-green-100', text: 'text-green-700', border: 'border-green-200' };
-    }
+  const handleResolveIssue = async (issueId) => {
+    try {
+      await axios.put(`${API}/issues/${issueId}`, { status: "resolved" });
+      toast.success("Issue Resolved");
+      fetchData();
+    } catch (e) { toast.error("Update failed"); }
   };
 
-  const filteredRisks = risks.filter(r =>
-    (r.title.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    r.category.toLowerCase().includes(searchTerm.toLowerCase())) &&
-    (levelFilter === "all" || r.level === levelFilter)
-  );
+  // --- HELPERS ---
 
-  const risksByLevel = {
-    critical: risks.filter(r => r.level === 'critical'),
-    high: risks.filter(r => r.level === 'high'),
-    medium: risks.filter(r => r.level === 'medium'),
-    low: risks.filter(r => r.level === 'low')
+  const getProjectName = (id) => projects.find(p => p.id === id)?.name || "Unknown";
+  
+  const getRiskScoreColor = (score) => {
+    if (score >= 15) return "bg-red-500 text-white";
+    if (score >= 10) return "bg-orange-500 text-white";
+    if (score >= 5) return "bg-amber-400 text-slate-900";
+    return "bg-green-500 text-white";
   };
 
-  // Generate risk matrix data
+  // Dependency Mapping Logic
+  const getAllDependencies = () => {
+    let deps = [];
+    projects.forEach(p => {
+      if (p.dependencies) {
+        p.dependencies.forEach(d => {
+          // Check if this dependency has an active risk
+          const linkedRisk = risks.find(r => r.related_dependencies?.includes(d.id));
+          deps.push({
+            ...d,
+            project_name: p.name,
+            project_id: p.id,
+            risk_status: linkedRisk ? "at_risk" : "secure",
+            linked_risk: linkedRisk
+          });
+        });
+      }
+    });
+    return deps;
+  };
+
+  const allDependencies = getAllDependencies();
+
+  // Matrix Data Gen
   const riskMatrix = [];
-  for (let impact = 5; impact >= 1; impact--) {
-    for (let prob = 1; prob <= 5; prob++) {
-      const score = prob * impact;
-      const level = score >= 15 ? 'critical' : score >= 10 ? 'high' : score >= 5 ? 'medium' : 'low';
-      const matchingRisks = risks.filter(r => r.probability === prob && r.impact === impact);
-      riskMatrix.push({ prob, impact, score, level, count: matchingRisks.length, risks: matchingRisks });
+  for (let i = 5; i >= 1; i--) { // Impact
+    for (let p = 1; p <= 5; p++) { // Probability
+      riskMatrix.push({
+        prob: p, impact: i,
+        score: p * i,
+        risks: risks.filter(r => r.probability === p && r.impact === i)
+      });
     }
   }
 
-  if (loading) {
-    return (
-      <div className="flex items-center justify-center h-96">
-        <div className="text-blue-600 font-heading text-lg uppercase tracking-wider animate-pulse">
-          Loading Risk Data...
-        </div>
-      </div>
-    );
-  }
+  if (loading) return <div className="flex justify-center h-96 items-center text-blue-600 animate-pulse">Loading Intelligence...</div>;
 
   return (
-    <div className="space-y-6 animate-fade-in" data-testid="risks-page">
+    <div className="space-y-6 animate-fade-in">
       {/* Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+      <div className="flex justify-between items-center">
         <div>
-          <h1 className="font-heading text-2xl font-bold text-slate-800 uppercase tracking-wide">
-            Risk Matrix
-          </h1>
-          <p className="text-slate-500 text-sm mt-1">
-            {risks.length} identified risks • {issues.length} active issues
-          </p>
+          <h1 className="font-heading text-2xl font-bold text-slate-800 uppercase">Risk & Issue Intelligence</h1>
+          <p className="text-slate-500 text-sm mt-1">Proactive Threat Management & Escalation Matrix</p>
         </div>
-        <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
-          <DialogTrigger asChild>
-            <Button className="bg-blue-600 hover:bg-blue-700 text-white font-heading uppercase tracking-wider" data-testid="create-risk-btn">
-              <Plus className="w-4 h-4 mr-2" />
-              Log Risk
-            </Button>
-          </DialogTrigger>
-          <DialogContent className="bg-white border-slate-200 max-w-lg">
-            <DialogHeader>
-              <DialogTitle className="font-heading text-slate-800 uppercase tracking-wider">
-                Log New Risk
-              </DialogTitle>
-            </DialogHeader>
-            <form onSubmit={handleSubmit} className="space-y-4 mt-4">
-              <div>
-                <label className="block text-xs font-heading text-slate-500 uppercase tracking-wider mb-2">
-                  Project
-                </label>
-                <Select
-                  value={formData.project_id}
-                  onValueChange={(value) => setFormData({ ...formData, project_id: value })}
-                >
-                  <SelectTrigger className="bg-slate-50 border-slate-200" data-testid="risk-project-select">
-                    <SelectValue placeholder="Select project" />
-                  </SelectTrigger>
-                  <SelectContent className="bg-white border-slate-200">
-                    {projects.map((project) => (
-                      <SelectItem key={project.id} value={project.id}>
-                        {project.name}
-                      </SelectItem>
-                    ))}
+        <div className="flex gap-2">
+          <Dialog open={isIssueOpen} onOpenChange={setIsIssueOpen}>
+            <DialogTrigger asChild>
+              <Button variant="destructive" className="font-heading uppercase">
+                <Siren className="w-4 h-4 mr-2" /> Report Issue
+              </Button>
+            </DialogTrigger>
+            <DialogContent>
+              <DialogHeader><DialogTitle>Report Operational Issue</DialogTitle></DialogHeader>
+              <form onSubmit={handleCreateIssue} className="space-y-4 mt-2">
+                <Select onValueChange={v => setIssueForm({...issueForm, project_id: v})}>
+                  <SelectTrigger><SelectValue placeholder="Affected Project" /></SelectTrigger>
+                  <SelectContent>{projects.map(p => <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>)}</SelectContent>
+                </Select>
+                <Input placeholder="Issue Title" onChange={e => setIssueForm({...issueForm, title: e.target.value})} required />
+                <Select onValueChange={v => setIssueForm({...issueForm, severity: v})} defaultValue="medium">
+                  <SelectTrigger><SelectValue placeholder="Severity" /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="low">Low</SelectItem>
+                    <SelectItem value="medium">Medium</SelectItem>
+                    <SelectItem value="high">High</SelectItem>
+                    <SelectItem value="critical">Critical</SelectItem>
                   </SelectContent>
                 </Select>
-              </div>
-              <div>
-                <label className="block text-xs font-heading text-slate-500 uppercase tracking-wider mb-2">
-                  Risk Title
-                </label>
-                <Input
-                  value={formData.title}
-                  onChange={(e) => setFormData({ ...formData, title: e.target.value })}
-                  className="bg-slate-50 border-slate-200"
-                  placeholder="Vendor delivery delay"
-                  required
-                  data-testid="risk-title-input"
-                />
-              </div>
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-xs font-heading text-slate-500 uppercase tracking-wider mb-2">
-                    Category
-                  </label>
-                  <Select
-                    value={formData.category}
-                    onValueChange={(value) => setFormData({ ...formData, category: value })}
-                  >
-                    <SelectTrigger className="bg-slate-50 border-slate-200" data-testid="risk-category-select">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent className="bg-white border-slate-200">
-                      {riskCategories.map((cat) => (
-                        <SelectItem key={cat} value={cat}>{cat}</SelectItem>
-                      ))}
-                    </SelectContent>
+                <Button type="submit" className="w-full bg-red-600 hover:bg-red-700 text-white">Escalate Issue</Button>
+              </form>
+            </DialogContent>
+          </Dialog>
+
+          <Dialog open={isRiskOpen} onOpenChange={setIsRiskOpen}>
+            <DialogTrigger asChild>
+              <Button className="bg-blue-600 hover:bg-blue-700 text-white font-heading uppercase">
+                <Plus className="w-4 h-4 mr-2" /> Log Risk
+              </Button>
+            </DialogTrigger>
+            <DialogContent className="max-w-lg">
+              <DialogHeader><DialogTitle>Identify New Risk</DialogTitle></DialogHeader>
+              <form onSubmit={handleCreateRisk} className="space-y-4 mt-2">
+                <div className="grid grid-cols-2 gap-4">
+                  <Select onValueChange={v => setRiskForm({...riskForm, project_id: v})}>
+                    <SelectTrigger><SelectValue placeholder="Project" /></SelectTrigger>
+                    <SelectContent>{projects.map(p => <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>)}</SelectContent>
+                  </Select>
+                  <Select onValueChange={v => setRiskForm({...riskForm, category: v})} defaultValue="Technical">
+                    <SelectTrigger><SelectValue /></SelectTrigger>
+                    <SelectContent>{riskCategories.map(c => <SelectItem key={c} value={c}>{c}</SelectItem>)}</SelectContent>
                   </Select>
                 </div>
-                <div>
-                  <label className="block text-xs font-heading text-slate-500 uppercase tracking-wider mb-2">
-                    Probability × Impact
-                  </label>
-                  <div className="grid grid-cols-2 gap-2">
-                    <Select
-                      value={formData.probability.toString()}
-                      onValueChange={(value) => setFormData({ ...formData, probability: parseInt(value) })}
-                    >
-                      <SelectTrigger className="bg-slate-50 border-slate-200">
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent className="bg-white border-slate-200">
-                        {[1, 2, 3, 4, 5].map((v) => (
-                          <SelectItem key={v} value={v.toString()}>P: {v}</SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                    <Select
-                      value={formData.impact.toString()}
-                      onValueChange={(value) => setFormData({ ...formData, impact: parseInt(value) })}
-                    >
-                      <SelectTrigger className="bg-slate-50 border-slate-200">
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent className="bg-white border-slate-200">
-                        {[1, 2, 3, 4, 5].map((v) => (
-                          <SelectItem key={v} value={v.toString()}>I: {v}</SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
+                <Input placeholder="Risk Title" onChange={e => setRiskForm({...riskForm, title: e.target.value})} required />
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <label className="text-xs uppercase text-slate-500">Probability (1-5)</label>
+                    <Input type="number" min="1" max="5" value={riskForm.probability} onChange={e => setRiskForm({...riskForm, probability: parseInt(e.target.value)})} />
+                  </div>
+                  <div>
+                    <label className="text-xs uppercase text-slate-500">Impact (1-5)</label>
+                    <Input type="number" min="1" max="5" value={riskForm.impact} onChange={e => setRiskForm({...riskForm, impact: parseInt(e.target.value)})} />
                   </div>
                 </div>
-              </div>
-              <div>
-                <label className="block text-xs font-heading text-slate-500 uppercase tracking-wider mb-2">
-                  Description
-                </label>
-                <textarea
-                  value={formData.description}
-                  onChange={(e) => setFormData({ ...formData, description: e.target.value })}
-                  className="w-full bg-slate-50 border border-slate-200 rounded-md px-3 py-2 text-sm text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  rows={2}
-                  data-testid="risk-description-input"
-                />
-              </div>
-              <div>
-                <label className="block text-xs font-heading text-slate-500 uppercase tracking-wider mb-2">
-                  Mitigation Plan
-                </label>
-                <textarea
-                  value={formData.mitigation_plan}
-                  onChange={(e) => setFormData({ ...formData, mitigation_plan: e.target.value })}
-                  className="w-full bg-slate-50 border border-slate-200 rounded-md px-3 py-2 text-sm text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  placeholder="Actions to reduce probability or impact..."
-                  rows={2}
-                />
-              </div>
-              <div>
-                <label className="block text-xs font-heading text-slate-500 uppercase tracking-wider mb-2">
-                  Contingency Plan
-                </label>
-                <textarea
-                  value={formData.contingency_plan}
-                  onChange={(e) => setFormData({ ...formData, contingency_plan: e.target.value })}
-                  className="w-full bg-slate-50 border border-slate-200 rounded-md px-3 py-2 text-sm text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  placeholder="Actions if risk materialises..."
-                  rows={2}
-                />
-              </div>
-              <div className="flex justify-end gap-3 pt-4">
-                <Button type="button" variant="outline" onClick={() => setIsDialogOpen(false)} className="border-slate-300">
-                  Cancel
-                </Button>
-                <Button type="submit" className="bg-blue-600 hover:bg-blue-700" data-testid="submit-risk-btn">
-                  Log Risk
-                </Button>
-              </div>
-            </form>
-          </DialogContent>
-        </Dialog>
-      </div>
-
-      {/* Summary Cards */}
-      <div className="grid grid-cols-4 gap-4">
-        {[
-          { level: 'critical', label: 'Critical', color: 'red' },
-          { level: 'high', label: 'High', color: 'orange' },
-          { level: 'medium', label: 'Medium', color: 'amber' },
-          { level: 'low', label: 'Low', color: 'green' },
-        ].map(({ level, label, color }) => (
-          <button
-            key={level}
-            onClick={() => setLevelFilter(levelFilter === level ? 'all' : level)}
-            className={`bg-white border rounded-lg p-4 text-left transition-all shadow-sm hover:shadow ${
-              levelFilter === level ? `border-${color}-400 ring-2 ring-${color}-100` : 'border-slate-200 hover:border-slate-300'
-            }`}
-          >
-            <div className="flex items-center justify-between mb-2">
-              <AlertTriangle className={`w-5 h-5 text-${color}-600`} />
-              <span className={`text-xs px-2 py-0.5 rounded font-heading uppercase bg-${color}-100 text-${color}-700`}>
-                {label}
-              </span>
-            </div>
-            <p className="text-2xl font-heading font-bold text-slate-800">{risksByLevel[level]?.length || 0}</p>
-          </button>
-        ))}
-      </div>
-
-      {/* View Toggle & Search */}
-      <div className="flex items-center gap-4">
-        <div className="flex-1 relative">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
-          <Input
-            type="text"
-            placeholder="Search risks..."
-            value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
-            className="pl-10 bg-white border-slate-200"
-            data-testid="search-risks-input"
-          />
-        </div>
-        <div className="flex items-center gap-1 bg-white border border-slate-200 rounded-lg p-1">
-          <button
-            onClick={() => setViewMode("list")}
-            className={`px-3 py-1.5 rounded text-sm font-heading uppercase ${viewMode === "list" ? "bg-blue-100 text-blue-700" : "text-slate-500 hover:text-slate-700"}`}
-          >
-            List
-          </button>
-          <button
-            onClick={() => setViewMode("matrix")}
-            className={`px-3 py-1.5 rounded text-sm font-heading uppercase ${viewMode === "matrix" ? "bg-blue-100 text-blue-700" : "text-slate-500 hover:text-slate-700"}`}
-          >
-            Matrix
-          </button>
+                <Input placeholder="Mitigation Strategy" onChange={e => setRiskForm({...riskForm, mitigation_plan: e.target.value})} />
+                <Button type="submit" className="w-full bg-blue-600 text-white">Log Risk</Button>
+              </form>
+            </DialogContent>
+          </Dialog>
         </div>
       </div>
 
-      {/* Risk Matrix View */}
-      {viewMode === "matrix" && (
-        <div className="bg-white border border-slate-200 rounded-lg p-6 shadow-sm">
-          <h3 className="font-heading text-sm font-bold text-slate-800 uppercase tracking-wider mb-4">
-            Probability × Impact Matrix
-          </h3>
-          <div className="flex">
-            {/* Y-axis label */}
-            <div className="flex flex-col justify-center mr-2">
-              <span className="text-xs text-slate-500 font-heading uppercase tracking-wider -rotate-90 whitespace-nowrap">
-                Impact →
-              </span>
-            </div>
-            <div className="flex-1">
-              <div className="grid grid-cols-5 gap-1 mb-2">
-                {[1, 2, 3, 4, 5].map(p => (
-                  <div key={p} className="text-center text-xs text-slate-500 font-mono">{p}</div>
-                ))}
+      <Tabs defaultValue="matrix" className="space-y-4">
+        <TabsList className="bg-slate-100 p-1">
+          <TabsTrigger value="matrix"><LayoutGrid className="w-4 h-4 mr-2"/> Risk Matrix</TabsTrigger>
+          <TabsTrigger value="issues"><Siren className="w-4 h-4 mr-2"/> Escalation Board</TabsTrigger>
+          <TabsTrigger value="dependencies"><Network className="w-4 h-4 mr-2"/> Dependency Map</TabsTrigger>
+        </TabsList>
+
+        {/* 1. RISK MATRIX VIEW */}
+        <TabsContent value="matrix" className="space-y-6">
+          <div className="grid lg:grid-cols-3 gap-6">
+            {/* Heatmap */}
+            <div className="lg:col-span-2 bg-white border rounded-lg p-5 shadow-sm">
+              <div className="flex justify-between items-center mb-4">
+                <h3 className="font-heading text-sm font-bold uppercase">Probability × Impact Heatmap</h3>
+                <div className="flex gap-2 text-xs">
+                  <span className="flex items-center gap-1"><div className="w-3 h-3 bg-red-500 rounded-sm"></div> Critical</span>
+                  <span className="flex items-center gap-1"><div className="w-3 h-3 bg-orange-500 rounded-sm"></div> High</span>
+                  <span className="flex items-center gap-1"><div className="w-3 h-3 bg-amber-400 rounded-sm"></div> Medium</span>
+                  <span className="flex items-center gap-1"><div className="w-3 h-3 bg-green-500 rounded-sm"></div> Low</span>
+                </div>
               </div>
-              <div className="grid grid-cols-5 gap-1">
-                {riskMatrix.map((cell, idx) => {
-                  const colors = getRiskColor(cell.level);
-                  return (
-                    <div
-                      key={idx}
-                      className={`aspect-square ${colors.bg} ${colors.border} border rounded flex flex-col items-center justify-center cursor-pointer hover:opacity-80 transition-opacity`}
-                      title={`P:${cell.prob} × I:${cell.impact} = ${cell.score}`}
-                    >
-                      <span className={`text-sm font-bold ${colors.text}`}>{cell.score}</span>
-                      {cell.count > 0 && (
-                        <span className={`text-[10px] ${colors.text}`}>{cell.count} risks</span>
+              
+              <div className="flex">
+                <div className="flex flex-col justify-center mr-2"><span className="text-xs font-bold uppercase -rotate-90">Impact</span></div>
+                <div className="flex-1">
+                  <div className="grid grid-cols-5 gap-1 mb-1">
+                    {[1,2,3,4,5].map(p => <div key={p} className="text-center text-xs text-slate-400">{p}</div>)}
+                  </div>
+                  <div className="grid grid-cols-5 gap-2">
+                    {riskMatrix.map((cell, idx) => (
+                      <div key={idx} className={`aspect-square rounded border p-1 transition-all hover:scale-105 ${getRiskScoreColor(cell.score)} bg-opacity-90`}>
+                        <div className="h-full flex flex-col items-center justify-center">
+                          {cell.risks.length > 0 ? (
+                            <>
+                              <span className="text-lg font-bold">{cell.risks.length}</span>
+                              <span className="text-[10px] opacity-80">risks</span>
+                            </>
+                          ) : <span className="text-xs opacity-30">{cell.score}</span>}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                  <div className="text-center text-xs font-bold uppercase mt-2">Probability</div>
+                </div>
+              </div>
+            </div>
+
+            {/* Top Risks List */}
+            <div className="bg-white border rounded-lg p-5 shadow-sm overflow-y-auto max-h-[500px]">
+              <h3 className="font-heading text-sm font-bold uppercase mb-4">Critical Threats</h3>
+              <div className="space-y-3">
+                {risks.filter(r => r.risk_score >= 10).sort((a,b) => b.risk_score - a.risk_score).map(risk => (
+                  <div key={risk.id} className="p-3 border rounded-lg hover:bg-slate-50 transition-colors group relative">
+                    <div className="flex justify-between items-start mb-1">
+                      <span className={`text-[10px] px-2 py-0.5 rounded font-bold uppercase ${getRiskScoreColor(risk.risk_score)}`}>
+                        Score: {risk.risk_score}
+                      </span>
+                      {user?.role === 'admin' && (
+                        <Button size="icon" variant="ghost" className="h-6 w-6" onClick={() => handleEscalateRisk(risk)}>
+                          <ArrowUp className="w-4 h-4 text-red-600" />
+                        </Button>
                       )}
                     </div>
-                  );
-                })}
-              </div>
-              <div className="text-center mt-2">
-                <span className="text-xs text-slate-500 font-heading uppercase tracking-wider">
-                  Probability →
-                </span>
+                    <h4 className="font-bold text-slate-800 text-sm">{risk.title}</h4>
+                    <p className="text-xs text-slate-500 mt-1">{getProjectName(risk.project_id)}</p>
+                    
+                    {risk.mitigation_plan && (
+                      <div className="mt-2 p-2 bg-blue-50 text-blue-700 text-xs rounded border border-blue-100">
+                        <strong>Mitigation:</strong> {risk.mitigation_plan}
+                      </div>
+                    )}
+                  </div>
+                ))}
+                {risks.filter(r => r.risk_score >= 10).length === 0 && (
+                  <div className="text-center py-8 text-slate-400">No critical threats detected</div>
+                )}
               </div>
             </div>
           </div>
-          
-          {/* Legend */}
-          <div className="flex justify-center gap-6 mt-6 pt-4 border-t border-slate-100">
-            {[
-              { level: 'critical', label: 'Critical (15-25)' },
-              { level: 'high', label: 'High (10-14)' },
-              { level: 'medium', label: 'Medium (5-9)' },
-              { level: 'low', label: 'Low (1-4)' },
-            ].map(({ level, label }) => {
-              const colors = getRiskColor(level);
-              return (
-                <div key={level} className="flex items-center gap-2">
-                  <div className={`w-4 h-4 rounded ${colors.bg} ${colors.border} border`} />
-                  <span className="text-xs text-slate-600">{label}</span>
+        </TabsContent>
+
+        {/* 2. ISSUE ESCALATION MATRIX */}
+        <TabsContent value="issues" className="space-y-6">
+          <div className="grid grid-cols-4 gap-4 h-[600px]">
+            {['open', 'escalated_L1', 'escalated_L2', 'resolved'].map(status => (
+              <div key={status} className="bg-slate-100 rounded-lg p-3 flex flex-col">
+                <div className="flex justify-between items-center mb-3 px-1">
+                  <h4 className="font-heading font-bold uppercase text-sm text-slate-600">
+                    {status.replace('_', ' ')}
+                  </h4>
+                  <Badge variant="secondary">{issues.filter(i => (status === 'escalated_L1' ? i.escalation_level === 1 : status === 'escalated_L2' ? i.escalation_level === 2 : i.status === status)).length}</Badge>
                 </div>
-              );
-            })}
-          </div>
-        </div>
-      )}
-
-      {/* Risks List View */}
-      {viewMode === "list" && (
-        <div className="space-y-4">
-          {filteredRisks.map((risk) => {
-            const colors = getRiskColor(risk.level);
-            return (
-              <div
-                key={risk.id}
-                className={`bg-white border ${colors.border} rounded-lg p-5 shadow-sm`}
-                data-testid={`risk-card-${risk.id}`}
-              >
-                <div className="flex items-start justify-between mb-3">
-                  <div className="flex items-start gap-3">
-                    <div className={`w-10 h-10 rounded-lg flex items-center justify-center ${colors.bg}`}>
-                      <AlertTriangle className={`w-5 h-5 ${colors.text}`} />
-                    </div>
-                    <div>
-                      <h3 className="text-slate-800 font-medium">{risk.title}</h3>
-                      <p className="text-xs text-slate-500 mt-1">{getProjectName(risk.project_id)} • {risk.category}</p>
-                    </div>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <span className={`px-2 py-1 rounded text-xs font-heading uppercase ${colors.bg} ${colors.text}`}>
-                      {risk.level}
-                    </span>
-                    <span className="px-2 py-1 rounded text-xs font-mono bg-slate-100 text-slate-700">
-                      Score: {risk.risk_score}
-                    </span>
-                  </div>
-                </div>
-
-                {risk.description && (
-                  <p className="text-sm text-slate-600 mb-3">{risk.description}</p>
-                )}
-
-                <div className="grid grid-cols-3 gap-4 mb-3">
-                  <div>
-                    <p className="text-xs text-slate-500 mb-1">Probability</p>
-                    <div className="flex items-center gap-1">
-                      {[1, 2, 3, 4, 5].map(v => (
-                        <div
-                          key={v}
-                          className={`w-5 h-5 rounded text-[10px] flex items-center justify-center ${
-                            v <= risk.probability ? `${colors.bg} ${colors.text}` : 'bg-slate-100 text-slate-400'
-                          }`}
-                        >
-                          {v}
+                
+                <div className="flex-1 overflow-y-auto space-y-3">
+                  {issues.filter(i => {
+                    if (status === 'open') return i.status === 'open' && i.escalation_level === 0;
+                    if (status === 'escalated_L1') return i.escalation_level === 1 && i.status !== 'resolved';
+                    if (status === 'escalated_L2') return i.escalation_level >= 2 && i.status !== 'resolved';
+                    if (status === 'resolved') return i.status === 'resolved';
+                    return false;
+                  }).map(issue => (
+                    <div key={issue.id} className="bg-white p-3 rounded shadow-sm border border-slate-200">
+                      <div className="flex justify-between items-start mb-2">
+                        <span className={`text-[10px] px-2 py-0.5 rounded uppercase font-bold ${
+                          issue.severity === 'critical' ? 'bg-red-100 text-red-700' : 
+                          issue.severity === 'high' ? 'bg-orange-100 text-orange-700' : 'bg-slate-100 text-slate-600'
+                        }`}>
+                          {issue.severity}
+                        </span>
+                        {issue.status !== 'resolved' && (
+                          <Button size="icon" variant="ghost" className="h-5 w-5 text-green-600" onClick={() => handleResolveIssue(issue.id)}>
+                            <CheckCircle2 className="w-3 h-3" />
+                          </Button>
+                        )}
+                      </div>
+                      <p className="text-sm font-medium text-slate-800 mb-1">{issue.title}</p>
+                      <p className="text-xs text-slate-500 mb-2">{getProjectName(issue.project_id)}</p>
+                      
+                      {issue.escalated_to && (
+                        <div className="flex items-center gap-1 text-[10px] text-purple-600 bg-purple-50 px-2 py-1 rounded">
+                          <CornerDownRight className="w-3 h-3" /> Escalated to Command
                         </div>
-                      ))}
+                      )}
                     </div>
-                  </div>
-                  <div>
-                    <p className="text-xs text-slate-500 mb-1">Impact</p>
-                    <div className="flex items-center gap-1">
-                      {[1, 2, 3, 4, 5].map(v => (
-                        <div
-                          key={v}
-                          className={`w-5 h-5 rounded text-[10px] flex items-center justify-center ${
-                            v <= risk.impact ? `${colors.bg} ${colors.text}` : 'bg-slate-100 text-slate-400'
-                          }`}
-                        >
-                          {v}
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                  <div>
-                    <p className="text-xs text-slate-500 mb-1">Mitigation Status</p>
-                    <span className={`px-2 py-0.5 rounded text-[10px] font-heading uppercase ${
-                      risk.mitigation_status === 'completed' ? 'bg-green-100 text-green-700' :
-                      risk.mitigation_status === 'in_progress' ? 'bg-blue-100 text-blue-700' :
-                      'bg-slate-100 text-slate-600'
-                    }`}>
-                      {risk.mitigation_status?.replace('_', ' ') || 'Not Started'}
-                    </span>
-                  </div>
-                </div>
-
-                {risk.mitigation_plan && (
-                  <div className="p-3 bg-slate-50 rounded-lg mb-3">
-                    <p className="text-xs text-slate-500 font-heading uppercase mb-1">Mitigation Plan</p>
-                    <p className="text-sm text-slate-700">{risk.mitigation_plan}</p>
-                  </div>
-                )}
-
-                <div className="flex items-center justify-between pt-3 border-t border-slate-100">
-                  <span className={`text-xs ${
-                    risk.status === 'open' ? 'text-red-600' :
-                    risk.status === 'mitigated' ? 'text-green-600' :
-                    'text-slate-500'
-                  }`}>
-                    Status: {risk.status?.toUpperCase() || 'OPEN'}
-                  </span>
-                  <Button 
-                    size="sm" 
-                    variant="outline" 
-                    className="text-xs border-orange-300 text-orange-600 hover:bg-orange-50"
-                    onClick={() => handleEscalate(risk.id)}
-                  >
-                    <ArrowUp className="w-3 h-3 mr-1" />
-                    Escalate
-                  </Button>
+                  ))}
                 </div>
               </div>
-            );
-          })}
-        </div>
-      )}
+            ))}
+          </div>
+        </TabsContent>
 
-      {filteredRisks.length === 0 && (
-        <div className="text-center py-12">
-          <Shield className="w-12 h-12 mx-auto text-slate-300 mb-4" />
-          <p className="text-slate-500">No risks found matching your criteria</p>
-        </div>
-      )}
+        {/* 3. DEPENDENCY INTELLIGENCE */}
+        <TabsContent value="dependencies" className="space-y-6">
+          <div className="bg-white border rounded-lg p-5 shadow-sm">
+            <h3 className="font-heading text-sm font-bold uppercase mb-4">Critical Dependency Chain</h3>
+            <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-4">
+              {allDependencies.map((dep, idx) => (
+                <div key={idx} className={`p-4 border rounded-lg relative overflow-hidden ${
+                  dep.risk_status === 'at_risk' ? 'border-red-200 bg-red-50' : 'border-slate-200 bg-white'
+                }`}>
+                  {dep.risk_status === 'at_risk' && (
+                    <div className="absolute top-0 right-0 p-1 bg-red-100 text-red-600 rounded-bl-lg">
+                      <AlertOctagon className="w-4 h-4" />
+                    </div>
+                  )}
+                  
+                  <div className="flex items-center gap-3 mb-3">
+                    <div className={`p-2 rounded-lg ${dep.type === 'vendor' ? 'bg-blue-100 text-blue-600' : 'bg-purple-100 text-purple-600'}`}>
+                      <Network className="w-5 h-5" />
+                    </div>
+                    <div>
+                      <p className="text-sm font-bold text-slate-800">{dep.description}</p>
+                      <p className="text-xs text-slate-500 uppercase">{dep.type} Dependency</p>
+                    </div>
+                  </div>
+
+                  <div className="space-y-2">
+                    <div className="flex justify-between text-xs">
+                      <span className="text-slate-500">Linked Project:</span>
+                      <span className="font-medium">{dep.project_name}</span>
+                    </div>
+                    
+                    {dep.linked_risk ? (
+                      <div className="mt-3 pt-3 border-t border-red-200">
+                        <p className="text-xs font-bold text-red-700 uppercase mb-1 flex items-center gap-1">
+                          <Activity className="w-3 h-3" /> Active Threat Detected
+                        </p>
+                        <p className="text-xs text-red-600 line-clamp-1">{dep.linked_risk.title}</p>
+                      </div>
+                    ) : (
+                      <div className="mt-3 pt-3 border-t border-slate-100">
+                        <p className="text-xs font-bold text-green-600 uppercase flex items-center gap-1">
+                          <CheckCircle2 className="w-3 h-3" /> Chain Secure
+                        </p>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              ))}
+              {allDependencies.length === 0 && (
+                <div className="col-span-full text-center py-12 text-slate-400">
+                  No dependencies mapped in active projects
+                </div>
+              )}
+            </div>
+          </div>
+        </TabsContent>
+      </Tabs>
     </div>
   );
 }

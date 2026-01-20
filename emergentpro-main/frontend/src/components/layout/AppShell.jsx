@@ -1,5 +1,6 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
+import axios from "axios";
 import {
   LayoutDashboard,
   Boxes,
@@ -15,12 +16,12 @@ import {
   LogOut,
   Shield,
   ChevronRight,
-  FileCheck // Import icon for Approvals
+  FileCheck, // For Approvals
+  Lock       // For Security (This was likely missing!)
 } from "lucide-react";
 import { Button } from "../ui/button";
-import { useAuth } from "../../App";
+import { useAuth, API } from "../../App";
 
-// Added "Approvals" to navigation
 const navItems = [
   { path: "/", label: "Dashboard", icon: LayoutDashboard },
   { path: "/programs", label: "Programmes", icon: Boxes },
@@ -28,9 +29,10 @@ const navItems = [
   { path: "/tasks", label: "Tasks", icon: ListTodo },
   { path: "/resources", label: "Resources", icon: Users },
   { path: "/budget", label: "Budget", icon: IndianRupee },
-  { path: "/approvals", label: "Approvals", icon: FileCheck }, // Added Approvals Link
+  { path: "/approvals", label: "Approvals", icon: FileCheck },
   { path: "/risks", label: "Risks", icon: AlertTriangle },
   { path: "/vendors", label: "Vendors", icon: Building2 },
+  { path: "/security", label: "Security", icon: Lock }, // New Security Tab
   { path: "/reports", label: "Reports", icon: BarChart3 },
 ];
 
@@ -38,16 +40,32 @@ export default function AppShell({ children }) {
   const location = useLocation();
   const navigate = useNavigate();
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
-  
-  // FIX 1: Destructure object, not array
-  const { user, logout } = useAuth(); 
+  const { user, logout } = useAuth();
+  const [pendingCount, setPendingCount] = useState(0);
+
+  // Poll for pending approvals (Only for Admins)
+  useEffect(() => {
+    const fetchNotifications = async () => {
+      if (user?.role === 'admin') {
+        try {
+          const res = await axios.get(`${API}/approvals?status=pending`);
+          setPendingCount(res.data.length);
+        } catch (error) {
+          console.error("Failed to fetch notifications");
+        }
+      }
+    };
+
+    fetchNotifications();
+    const interval = setInterval(fetchNotifications, 10000); // Poll every 10s
+    return () => clearInterval(interval);
+  }, [user]);
 
   const handleLogout = () => {
-    logout(); // Use the context logout function
+    logout();
     navigate("/login");
   };
 
-  // Helper to get initials
   const getInitials = (name) => {
     return name ? name.split(' ').map(n => n[0]).join('').substring(0, 2).toUpperCase() : 'U';
   };
@@ -101,7 +119,7 @@ export default function AppShell({ children }) {
                 key={item.path}
                 to={item.path}
                 onClick={() => setIsSidebarOpen(false)}
-                className={`flex items-center gap-3 px-4 py-2.5 rounded-lg transition-colors group ${
+                className={`flex items-center gap-3 px-4 py-2.5 rounded-lg transition-colors group relative ${
                   isActive
                     ? "bg-blue-50 text-blue-700"
                     : "text-slate-600 hover:bg-slate-50 hover:text-slate-800"
@@ -109,13 +127,21 @@ export default function AppShell({ children }) {
               >
                 <item.icon className={`w-5 h-5 ${isActive ? "text-blue-600" : "text-slate-400 group-hover:text-slate-600"}`} />
                 <span className="font-medium text-sm">{item.label}</span>
+                
+                {/* Notification Badge Logic */}
+                {item.label === "Approvals" && pendingCount > 0 && user?.role === 'admin' && (
+                  <span className="absolute right-2 top-1/2 -translate-y-1/2 bg-red-500 text-white text-[10px] font-bold px-1.5 py-0.5 rounded-full">
+                    {pendingCount}
+                  </span>
+                )}
+
                 {isActive && <ChevronRight className="w-4 h-4 ml-auto text-blue-400" />}
               </Link>
             );
           })}
         </nav>
 
-        {/* FIX 2: Dynamic User Section */}
+        {/* User Info Section */}
         <div className="absolute bottom-0 left-0 right-0 p-4 border-t border-slate-100">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-3">
@@ -124,10 +150,10 @@ export default function AppShell({ children }) {
               </div>
               <div className="overflow-hidden">
                 <p className="text-sm font-medium text-slate-700 truncate w-32" title={user?.name}>
-                  {user?.name || "User"}
+                  {user?.name}
                 </p>
                 <p className="text-xs text-slate-500 capitalize">
-                  {user?.role || "Guest"}
+                  {user?.role}
                 </p>
               </div>
             </div>

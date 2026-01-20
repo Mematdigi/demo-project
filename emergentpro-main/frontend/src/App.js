@@ -16,6 +16,7 @@ import Risks from "./pages/Risks";
 import Vendors from "./pages/Vendors";
 import Reports from "./pages/Reports";
 import Approvals from "./pages/Approvals";
+import Security from "./pages/Security";
 
 // Layout
 import AppShell from "./components/layout/AppShell";
@@ -149,6 +150,7 @@ function App() {
                     <Route path="/approvals" element={<Approvals />} /> 
                     <Route path="/risks" element={<Risks />} />
                     <Route path="/vendors" element={<Vendors />} />
+                    <Route path="/security" element={<Security />} />
                     <Route path="/reports" element={<Reports />} />
                   </Routes>
                 </AppShell>
